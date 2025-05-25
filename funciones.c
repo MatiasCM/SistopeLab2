@@ -1,12 +1,5 @@
 #include "funciones.h"
 
-// pipe que para comunicarse con el siguiente proceso
-// solo enviar
-int *fd_sig;
-
-// pipe para recibir del preceso anterior
-int *fd_ant;
-
 // pipe para comunicarse con el padre
 int *fd_padre;
 
@@ -106,8 +99,6 @@ void conectar_hijos(int **pipes_padrehijo, int hijos, pid_t pid){
                 // dup2(anillo[j][1], STDOUT_FILENO);
                 write(pipes_padrehijo[j][1], anillo[j], sizeof(anillo[j]));
                 read(fd_padre[0], &espera, 1);
-
-                fprintf(stderr, "wena hijito2\n");
             }
             else{
                 // dup2(anillo[j-1][0], STDIN_FILENO);
@@ -119,7 +110,6 @@ void conectar_hijos(int **pipes_padrehijo, int hijos, pid_t pid){
                 write(pipes_padrehijo[j][1], anillo[j], sizeof(anillo[j]));
                 read(fd_padre[0], &espera, 1);
             }
-            return;
         }
         return;
     }
