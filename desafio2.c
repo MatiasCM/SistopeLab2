@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include "funciones.h"
 
 int main(int argc, char *argv[]) {
     int opt;
@@ -48,6 +49,10 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    int **pipes_padrehijo = crear_hijos(hijos);
+
+    conectar_hijos(pipes_padrehijo, hijos, getpid());
+    printf("soy el padre y acabe\n");
     return 0;
 
 }
