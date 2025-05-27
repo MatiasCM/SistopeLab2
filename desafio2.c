@@ -49,10 +49,8 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    int **pipes_padrehijo = crear_hijos(hijos);
+    crear_anillo_y_jugar(hijos, token, numero);
 
-    conectar_hijos(pipes_padrehijo, hijos, getpid());
     printf("soy el padre y acabe\n");
     return 0;
-
 }
