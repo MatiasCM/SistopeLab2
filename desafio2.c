@@ -49,10 +49,10 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    int **pipes_padrehijo = crear_hijos(hijos);
+    int **anillo = (int**)malloc(hijos * sizeof(int*));
+    int **pipes_padrehijo = crear_hijos(hijos, anillo);
 
-    conectar_hijos(pipes_padrehijo, hijos, getpid());
-    printf("soy el padre y acabe\n");
+    conectar_hijos(pipes_padrehijo, anillo, hijos, token, numero);
     return 0;
 
 }
