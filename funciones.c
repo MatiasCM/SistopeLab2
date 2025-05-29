@@ -71,6 +71,7 @@ void ciclo_token(int max_decre, int id_logico) {
     int entrada[2];
     while (1) {
         read(STDIN_FILENO, entrada, sizeof(int)*2);
+        wait(NULL);
         accion = entrada[0];
         // sigue el juego
         if(accion == 1){
@@ -112,7 +113,7 @@ void ciclo_token(int max_decre, int id_logico) {
             fprintf(stderr, "AHora soy %d\n", id_logico);
             char respuesta;
             write(fd_padre[1], &respuesta, 1);
-            if(procesos_restantes == 1){
+            if(procesos_restantes <= 1){
                 int termino = 1;
                 write(fd_padre[1], &termino, sizeof(int));
                 fprintf(stderr, "ganeeeee\n");
@@ -129,11 +130,11 @@ void ciclo_token(int max_decre, int id_logico) {
         }
         // aviso de salida de un proceso
         else if(accion == 3){
+            procesos_restantes = procesos_restantes - 1;
             int id_logico_quien_sale = entrada[1];
             fprintf(stderr, "Soy %d y salio %d\n", id_logico, id_logico_quien_sale);
             if(id_logico_quien_sale < id_logico){
                 id_logico = id_logico - 1;
-                procesos_restantes = procesos_restantes - 1;
             }
             fprintf(stderr, "Ahora soy %d\n", id_logico);
             // si son iguales quiere decir que ya se dio una vuelta en el anillo y todos los hijos estan avisados de la salida
@@ -152,16 +153,7 @@ void ciclo_token(int max_decre, int id_logico) {
         }
         // es lider
         else if(accion == 4){
-            // el lider se comunica con el padre
-            int respuesta;
-            int procesos_restantes = entrada[1];
-            if(procesos_restantes <= 1){
-                respuesta = 1;
-            }
-            else{
-                respuesta = 0;
-            }
-            write(fd_padre[1], &respuesta, sizeof(int));
+            // el lider espera el token del padre
             int token_r;
             read(STDIN_FILENO, &token_r, sizeof(int));
             int salida[2];
@@ -173,6 +165,9 @@ void ciclo_token(int max_decre, int id_logico) {
 }
 
 void hijos_esperan_conexiones(){
+    if(procesos_restantes == 1){
+        exit(0);
+    }
     srand(time(NULL));
     int *fd_in = (int*)malloc(sizeof(int)*2);
     int *fd_out = (int*)malloc(sizeof(int)*2);
@@ -257,7 +252,7 @@ void conectar_hijos(int **pipes_padrehijo, int **anillo, int hijos, int token, i
     }*/
 
     // Esperar a que todos los hijos terminen
-    while(1){
+    while(hijos > 1){
         int id_logico_hijo;
         read(fd_padre[0], &id_logico_hijo, sizeof(int));
         // si el id_logico enviado por el hijo es -1, significa que es el ganador
@@ -294,6 +289,7 @@ void conectar_hijos(int **pipes_padrehijo, int **anillo, int hijos, int token, i
         int espera_y_termino;
         read(fd_padre[0], &espera_y_termino, sizeof(int));
         if(espera_y_termino){
+            wait(NULL);
             return;
         }
         // espera a que todos los procesos sepan de la salida del hermano
@@ -302,14 +298,7 @@ void conectar_hijos(int **pipes_padrehijo, int **anillo, int hijos, int token, i
         salida_lider[0] = 4;
         salida_lider[1] = hijos;
         // selecciona el lider
-        write(anillo[0][1], salida_lider, sizeof(int)*2);
-        // espera a que el lider espere el recibo del token
-        int respuesta_lider;
-        read(fd_padre[0], &respuesta_lider, sizeof(int));
-        // el lider notifica que si es el ganador o no
-        if(respuesta_lider){
-            return;
-        }
+        write(anillo[0][1], salida_lider, sizeof(int)*2); 
         // le envia el token al lider
         write(anillo[0][1], &token, sizeof(int));
     }
