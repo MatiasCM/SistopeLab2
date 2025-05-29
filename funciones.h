@@ -9,6 +9,8 @@ int** crear_hijos(int cantidad, int **anillo);
 
 void ciclo_token(int max_decre, int id_logico);
 
+void inicializacion_hijos(int cantidad, int id_proceso);
+
 void hijos_esperan_conexiones();
 
 void conectar_hijos(int **pipes_padrehijo, int **anillo, int hijos, pid_t pid, int token);

@@ -3,7 +3,7 @@
 // pipe para comunicarse con el padre
 int *fd_padre;
 
-// pipe para escuchar al padre
+// pipe para escuchar al padre por cambios en los fd
 int *fd2_padre;
 
 int id;
@@ -37,8 +37,6 @@ int** crear_hijos(int cantidad, int **anillo){
             exit(EXIT_FAILURE);
         }
     }
-    // establece los hijos que jugaran
-    procesos_restantes = cantidad;
 
     for(int j = 0; j < cantidad; j++){
         if(pipe(pipes_padrehijo[j]) == -1){
@@ -53,16 +51,34 @@ int** crear_hijos(int cantidad, int **anillo){
             // Hijo
 
             close(pipes_padrehijo[j][1]);
-            fd2_padre = pipes_padrehijo[j];
-            close(fd_padre[0]);
-            
-            hijos_esperan_conexiones();
+            dup2(pipes_padrehijo[j][0], STDIN_FILENO);
+            dup2(fd_padre[1], STDOUT_FILENO);
+
+            char cantidad_str[20];
+            char id_str[20];
+            snprintf(cantidad_str, sizeof(cantidad_str), "%d", cantidad);
+            snprintf(id_str, sizeof(id_str), "%d", j);
+
+            char *args[] = {"./hijos", cantidad_str, id_str, NULL};
+
+            execv("./hijos", args);
 
             return NULL;
         }
         else{
             close(pipes_padrehijo[j][0]);
         }
+    }
+    // el padre espera a que los hijos esten listos para inicializarlos luego del exec
+    char espera;
+    for(int i = 0; i < cantidad; i++){
+        read(fd_padre[0], &espera, 1);
+       
+    }
+    for(int j = 0; j < cantidad; j++){
+        write(pipes_padrehijo[j][1], fd_padre, sizeof(int)*2);
+        write(pipes_padrehijo[j][1], pipes_padrehijo[j], sizeof(int)*2);
+        close(pipes_padrehijo[j][0]);
     }
     close(fd_padre[1]);
     return pipes_padrehijo;
@@ -117,6 +133,8 @@ void ciclo_token(int max_decre, int id_logico) {
                 int termino = 1;
                 write(fd_padre[1], &termino, sizeof(int));
                 fprintf(stderr, "Proceso %d es el ganador\n", id);
+                close(STDIN_FILENO);
+                close(STDOUT_FILENO);
                 exit(0);
             }
             else{
@@ -161,14 +179,28 @@ void ciclo_token(int max_decre, int id_logico) {
     }
 }
 
+void inicializacion_hijos(int cantidad, int id_proceso){
+    procesos_restantes = cantidad;
+    id = id_proceso;
+    char respuesta;
+    fd_padre = (int*)malloc(sizeof(int)*2);
+    fd2_padre = (int*)malloc(sizeof(int)*2);
+    write(STDOUT_FILENO, &respuesta, 1);
+    read(STDIN_FILENO, fd_padre, sizeof(int)*2);
+    read(STDIN_FILENO, fd2_padre, sizeof(int)*2);
+    close(fd2_padre[1]);
+    close(fd_padre[0]);
+    hijos_esperan_conexiones();
+}
+
 void hijos_esperan_conexiones(){
     if(procesos_restantes == 1){
         exit(0);
     }
     srand(time(NULL));
+    
     int *fd_in = (int*)malloc(sizeof(int)*2);
     int *fd_out = (int*)malloc(sizeof(int)*2);
-        
     read(fd2_padre[0], fd_in, sizeof(int)*2);
     dup2(fd_in[0], STDIN_FILENO);
 
@@ -243,17 +275,10 @@ void conectar_hijos(int **pipes_padrehijo, int **anillo, int hijos, int token, i
         perror("write token");
     }
 
-    /*// Cerrar todos los pipes en el padre
-    for (int i = 0; i < hijos; i++) {
-        close(anillo[i][0]);
-        close(anillo[i][1]);
-    }*/
-
     // Esperar a que todos los hijos terminen
     while(hijos > 1){
         int id_logico_hijo;
         read(fd_padre[0], &id_logico_hijo, sizeof(int));
-        // si el id_logico enviado por el hijo es -1, significa que es el ganador
         //  7      1       2       3       4       5       6      7
         // -> 0 1 --> 0 1 --> 0 1 --> 0 1 --> 0 1 --> 0 1 --> 0 1 -
         //   muere y pipe 1 se va
@@ -270,7 +295,12 @@ void conectar_hijos(int **pipes_padrehijo, int **anillo, int hijos, int token, i
         }
         
         // cierre y eliminacion de las pipes que se comunican con el proceso eliminado
-        
+
+        close(pipes_padrehijo[id_logico_hijo][0]);
+        close(pipes_padrehijo[id_logico_hijo][1]);
+        close(anillo[id_logico_hijo][0]);
+        close(anillo[id_logico_hijo][1]);
+
         free(pipes_padrehijo[id_logico_hijo]);
         free(anillo[id_logico_hijo]);
         int j = 0;
