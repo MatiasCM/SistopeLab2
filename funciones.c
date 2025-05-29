@@ -2,173 +2,163 @@
 
 void ciclo_token(int max_decre, int id_logico) {
     int token;
-    int primera_lectura = 1;  // Bandera para indicar si es la primera vez que el proceso recibe el token
-
-    //fprintf(stderr, "Proceso %d empezó\n", id_logico);
 
     srand(time(NULL));
 
     while (1) {
-        // Leer el token desde el pipe de entrada (esto bloquea hasta que haya algo que leer)
+        // Leer token enviado por el padre (desde stdin)
         ssize_t datos = read(STDIN_FILENO, &token, sizeof(int));
-
-        // Si no hay más datos (el pipe se cierra), el proceso termina
         if (datos == 0) {
-            //fprintf(stderr, "Proceso %d detectó cierre de pipe\n", id_logico);
-            exit(255);
-        } else if (datos < 0) {
+            // Si el pipe se cierra, terminar el proceso hijo
+            exit(0);
+        }
+        if (datos < 0) {
             perror("read");
-            exit(255);
+            exit(1);
         }
 
-        // Si es el primer proceso, imprimimos que ha recibido el token
-        if (primera_lectura && id_logico == 0) {
-            fprintf(stderr, "Proceso %d recibió token: %d\n", id_logico, token);
-            primera_lectura = 0;
-        } else {
-            fprintf(stderr, "Proceso %d recibió token: %d\n", id_logico, token);
-        }
+        // Mostrar que el proceso recibió el token
+        fprintf(stderr, "Proceso %d recibió token: %d\n", id_logico, token);
 
-        // Resta un valor aleatorio entre 0 y M-1 al token
-        int decre = rand() % max_decre;
-        token = token - decre;
-
-        fprintf(stderr, "Proceso %d resta %d, token ahora: %d\n", id_logico, decre, token);
-
-        // Si el token es menor que 0, el proceso termina
+        // Si token negativo, proceso debe terminar (quedó eliminado)
         if (token < 0) {
             fprintf(stderr, "Proceso %d termina\n", id_logico);
-            close(STDOUT_FILENO);  // Cerramos el pipe de salida para indicar que ya no enviaremos más datos
-            exit(id_logico);  // Terminamos el proceso con su id lógico
+            exit(id_logico);
         }
 
-        // Escribimos el token actualizado en el pipe de salida (para el siguiente proceso)
+        int decre = rand() % max_decre;
+        token -= decre;
+        fprintf(stderr, "Proceso %d resta %d, token ahora: %d\n", id_logico, decre, token);
+
+        // Enviar el token actualizado al padre (stdout)
         if (write(STDOUT_FILENO, &token, sizeof(int)) <= 0) {
             perror("write");
-            exit(255);  // Si hay un error al escribir, terminamos el proceso
+            exit(1);
         }
     }
 }
 
 void crear_anillo_y_jugar(int cantidad, int token, int max_decre) {
     int vivos[cantidad];
-    int procesos_vivos = cantidad;
+    pid_t pids[cantidad];
+    int pipes_in[cantidad][2];
+    int pipes_out[cantidad][2];
 
-    // Inicializamos todos los procesos como vivos
+    // Inicializar todos los procesos como vivos
     for (int i = 0; i < cantidad; i++) vivos[i] = 1;
 
-    int sync_pipes[cantidad][2];  // Pipes para sincronización entre procesos
-
-    // Mientras haya más de un proceso vivo, seguimos con el ciclo
-    while (procesos_vivos > 1) {
-        int vivos_indices[procesos_vivos];  // Arreglo con los índices de los procesos vivos
-        int idx = 0;
-        // Guardamos los índices de los procesos vivos en vivos_indices
-        for (int i = 0; i < cantidad; i++) {
-            if (vivos[i]) vivos_indices[idx++] = i;
+    // Crear todos los pipes necesarios para la comunicación padre-hijos
+    for (int i = 0; i < cantidad; i++) {
+        if (pipe(pipes_in[i]) == -1) {
+            perror("pipe in");
+            exit(EXIT_FAILURE);
         }
-
-        // Imprimimos el estado actual de los procesos vivos
-        //fprintf(stderr, "Ronda con %d procesos vivos: ", procesos_vivos);
-        //for (int k = 0; k < procesos_vivos; k++) fprintf(stderr, "%d ", vivos_indices[k]);
-        //fprintf(stderr, "\n");
-
-        // Creamos los pipes para el anillo de procesos
-        int anillo[procesos_vivos][2];
-        for (int i = 0; i < procesos_vivos; i++) {
-            if (pipe(anillo[i]) == -1) {
-                perror("pipe");
-                exit(EXIT_FAILURE);
-            }
-            if (pipe(sync_pipes[i]) == -1) {
-                perror("sync pipe");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        // Creamos los procesos hijos
-        for (int i = 0; i < procesos_vivos; i++) {
-            pid_t pid = fork();
-            if (pid < 0) {
-                perror("fork");
-                exit(EXIT_FAILURE);
-            } else if (pid == 0) {  // Proceso hijo
-                close(sync_pipes[i][0]);  // Cerramos la entrada del pipe de sincronización
-
-                int idx_antes = (i + procesos_vivos - 1) % procesos_vivos;  // Índice del proceso anterior en el anillo
-
-                // Redirigimos el pipe de entrada a la entrada del hijo
-                dup2(anillo[idx_antes][0], STDIN_FILENO);
-                // Redirigimos el pipe de salida a la salida del hijo
-                dup2(anillo[i][1], STDOUT_FILENO);
-
-                // Cerramos todos los pipes que no usamos
-                for (int j = 0; j < procesos_vivos; j++) {
-                    close(anillo[j][0]);
-                    close(anillo[j][1]);
-                }
-
-                // Avisamos al padre que el hijo está listo
-                if (write(sync_pipes[i][1], "X", 1) != 1) {
-                    perror("write sync");
-                    exit(EXIT_FAILURE);
-                }
-                close(sync_pipes[i][1]);
-
-                // Llamamos a la función que maneja el paso del token y la resta
-                ciclo_token(max_decre, vivos_indices[i]);
-                exit(vivos_indices[i]);  // Terminamos el proceso con su id
-            }
-            close(sync_pipes[i][1]);  // El padre cierra la parte de escritura del pipe de sincronización
-        }
-
-        // El padre espera que todos los hijos terminen de inicializarse
-        for (int i = 0; i < procesos_vivos; i++) {
-            char buf;
-            if (read(sync_pipes[i][0], &buf, 1) != 1) {
-                fprintf(stderr, "Error sincronizando hijo %d\n", vivos_indices[i]);
-                exit(EXIT_FAILURE);
-            }
-            close(sync_pipes[i][0]);
-        }
-
-        // Escribir el token inicial en el pipe correcto del primer proceso
-        int ultimo = procesos_vivos - 1;  // El último proceso en el anillo
-        fprintf(stderr, "Padre envía token %d al proceso %d\n", token, vivos_indices[0]);
-        if (write(anillo[ultimo][1], &token, sizeof(int)) <= 0) {
-            perror("write token");
-        }
-
-        // Cerramos todos los pipes en el padre después de enviar el token inicial
-        for (int i = 0; i < procesos_vivos; i++) {
-            close(anillo[i][0]);
-            close(anillo[i][1]);
-        }
-
-        // Esperamos a que los hijos terminen y actualizamos el estado de los procesos vivos
-        int hijos_esperar = procesos_vivos;
-        while (hijos_esperar > 0) {
-            int status;
-            pid_t pid = wait(&status);  // Esperamos por cada hijo
-            if (pid == -1) {
-                perror("wait");
-                exit(EXIT_FAILURE);
-            }
-            if (WIFEXITED(status)) {
-                int exit_code = WEXITSTATUS(status);
-                if (exit_code >= 0 && exit_code < cantidad) {
-                    if (vivos[exit_code]) {
-                        vivos[exit_code] = 0;  // Marcamos el proceso como eliminado
-                        procesos_vivos--;  // Reducimos el número de procesos vivos
-                        //fprintf(stderr, "Padre detectó que proceso %d fue eliminado. Quedan %d procesos.\n", exit_code, procesos_vivos);
-                    }
-                }
-            }
-            hijos_esperar--;
+        if (pipe(pipes_out[i]) == -1) {
+            perror("pipe out");
+            exit(EXIT_FAILURE);
         }
     }
 
-    // Después de que solo quede un proceso, el padre lo declara como ganador
+    // Crear todos los procesos hijos con fork una sola vez
+    for (int i = 0; i < cantidad; i++) {
+        pid_t pid = fork();
+        if (pid < 0) {
+            perror("fork");
+            exit(EXIT_FAILURE);
+        } else if (pid == 0) {
+            //El hijo
+
+            // Redirigir stdin para leer desde pipe_in
+            close(pipes_in[i][1]); 
+            dup2(pipes_in[i][0], STDIN_FILENO);
+            close(pipes_in[i][0]);
+
+            // Redirigir stdout para escribir en pipe_out 
+            close(pipes_out[i][0]); 
+            dup2(pipes_out[i][1], STDOUT_FILENO);
+            close(pipes_out[i][1]);
+
+            // Cerrar todos los demás pipes no usados para evitar fugas
+            for (int j = 0; j < cantidad; j++) {
+                if (j != i) {
+                    close(pipes_in[j][0]);
+                    close(pipes_in[j][1]);
+                    close(pipes_out[j][0]);
+                    close(pipes_out[j][1]);
+                }
+            }
+
+            // Llamar a la función que maneja el ciclo del token para el proceso hijo
+            ciclo_token(max_decre, i);
+
+            exit(i);
+        } else {
+            //El padre
+
+            pids[i] = pid;
+
+            // El padre cierra extremos de pipe que no usará
+            close(pipes_in[i][0]);
+            close(pipes_out[i][1]);
+        }
+    }
+
+    int procesos_vivos = cantidad;   // Contador de procesos vivos
+    int current = 0;                 // Índice del proceso que tiene el token actualmente
+    int token_actual = token;        // Token actual que se pasa entre procesos
+    int ultimo_token_valido = token; // Último token válido no negativo
+
+    //fprintf(stderr, "Padre inicia juego con token=%d, max_decre=%d, procesos=%d\n", token, max_decre, cantidad);
+
+    // Enviar token inicial al primer proceso vivo
+    while (!vivos[current]) current = (current + 1) % cantidad;
+    if (write(pipes_in[current][1], &token_actual, sizeof(int)) <= 0) {
+        perror("write token inicio");
+        exit(EXIT_FAILURE);
+    }
+
+    // Bucle principal: mientras haya más de un proceso vivo
+    while (procesos_vivos > 1) {
+        int token_leido;
+        // Leer token actualizado del proceso actual
+        ssize_t leido = read(pipes_out[current][0], &token_leido, sizeof(int));
+        if (leido <= 0) {
+            // Error o pipe cerrado, proceso eliminado inesperadamente
+            fprintf(stderr, "Padre detecta pipe cerrado o error proceso %d\n", current);
+            vivos[current] = 0;
+            procesos_vivos--;
+        } else {
+            //fprintf(stderr, "Padre recibe token %d de proceso %d\n", token_leido, current);
+
+            if (token_leido < 0) {
+                // Proceso eliminado (token negativo)
+                fprintf(stderr, "Proceso %d eliminado\n", current);
+                vivos[current] = 0;
+                procesos_vivos--;
+
+                // Reiniciar token para la nueva ronda al valor original
+                ultimo_token_valido = token;
+            } else {
+                // Actualizar token actual y último válido
+                token_actual = token_leido;
+                ultimo_token_valido = token_leido;
+            }
+        }
+
+        // Buscar siguiente proceso vivo
+        do { current = (current + 1) % cantidad; } while (!vivos[current]);
+
+        // Si sólo queda un proceso vivo, salir del bucle
+        if (procesos_vivos == 1) break;
+
+        // Enviar token válido al siguiente proceso vivo
+        if (write(pipes_in[current][1], &ultimo_token_valido, sizeof(int)) <= 0) {
+            perror("write padre token siguiente");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Encontrar el proceso ganador
     int ganador = -1;
     for (int i = 0; i < cantidad; i++) {
         if (vivos[i]) {
@@ -178,4 +168,18 @@ void crear_anillo_y_jugar(int cantidad, int token, int max_decre) {
     }
 
     fprintf(stderr, "Proceso %d es el ganador!\n", ganador);
+
+    // Terminar todos los procesos restantes y cerrar pipes
+    for (int i = 0; i < cantidad; i++) {
+        close(pipes_in[i][1]);
+        close(pipes_out[i][0]);
+        if (vivos[i]) {
+            kill(pids[i], SIGTERM);
+        }
+    }
+
+    // Esperar que todos los hijos terminen para evitar zombies
+    for (int i = 0; i < cantidad; i++) {
+        waitpid(pids[i], NULL, 0);
+    }
 }
