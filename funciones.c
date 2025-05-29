@@ -6,6 +6,8 @@ int *fd_padre;
 // pipe para escuchar al padre
 int *fd2_padre;
 
+int id;
+
 int procesos_restantes;
 
 int** crear_hijos(int cantidad, int **anillo){
@@ -76,11 +78,10 @@ void ciclo_token(int max_decre, int id_logico) {
         // sigue el juego
         if(accion == 1){
             token = entrada[1];
-            fprintf(stderr, "Proceso %d recibió token: %d\n", id_logico, token);
             int decrecimiento = rand() % max_decre;
-            token = token - decrecimiento;
-            if(token < 0){
-                fprintf(stderr, "Proceso %d termina\n", id_logico);
+            int nuevo_token = token - decrecimiento;
+            if(nuevo_token < 0){
+                fprintf(stderr, "Proceso %d ; Token recibido: %d ; Token resultante: %d (Proceso %d es eliminado)\n", id, token, nuevo_token, id);
                 write(fd_padre[1], &id_logico, sizeof(int));
                 int salida[2];
                 salida[0] = 2;
@@ -91,16 +92,16 @@ void ciclo_token(int max_decre, int id_logico) {
                 exit(0);
             }
             else{
+                fprintf(stderr, "Proceso %d ; Token recibido: %d ; Token resultante: %d\n", id, token, nuevo_token);
                 int salida[2];
                 salida[0] = 1;
-                salida[1] = token;
+                salida[1] = nuevo_token;
                 write(STDOUT_FILENO, salida, sizeof(int)*2);
             }
         }
         // aviso de salida del proceso anterior
         else if(accion == 2){
             int id_logico_quien_sale = entrada[1];
-            fprintf(stderr, "Soy %d y salio %d\n", id_logico, id_logico_quien_sale);
             int *fd_in = (int*)malloc(sizeof(int)*2);
             read(fd2_padre[0], fd_in, sizeof(int)*2);
             dup2(fd_in[0], STDIN_FILENO);
@@ -110,13 +111,12 @@ void ciclo_token(int max_decre, int id_logico) {
                 id_logico = id_logico - 1;
             }
             procesos_restantes = procesos_restantes - 1;
-            fprintf(stderr, "AHora soy %d\n", id_logico);
             char respuesta;
             write(fd_padre[1], &respuesta, 1);
             if(procesos_restantes <= 1){
                 int termino = 1;
                 write(fd_padre[1], &termino, sizeof(int));
-                fprintf(stderr, "ganeeeee\n");
+                fprintf(stderr, "Proceso %d es el ganador\n", id);
                 exit(0);
             }
             else{
@@ -132,11 +132,9 @@ void ciclo_token(int max_decre, int id_logico) {
         else if(accion == 3){
             procesos_restantes = procesos_restantes - 1;
             int id_logico_quien_sale = entrada[1];
-            fprintf(stderr, "Soy %d y salio %d\n", id_logico, id_logico_quien_sale);
             if(id_logico_quien_sale < id_logico){
                 id_logico = id_logico - 1;
             }
-            fprintf(stderr, "Ahora soy %d\n", id_logico);
             // si son iguales quiere decir que ya se dio una vuelta en el anillo y todos los hijos estan avisados de la salida
             // o si el que le sigue es el que salio quiere decir que salio el proceso con el id_logico mas grande
             if(id_logico != id_logico_quien_sale && (id_logico+1) != (id_logico_quien_sale)){
@@ -146,7 +144,6 @@ void ciclo_token(int max_decre, int id_logico) {
                 write(STDOUT_FILENO, salida, sizeof(int)*2);
             }
             else{
-                fprintf(stderr, "ya se nos aviso a todos %d\n", id_logico);
                 char respuesta;
                 write(fd_padre[1], &respuesta, 1);
             }
@@ -189,6 +186,8 @@ void hijos_esperan_conexiones(){
     int id_logico, decrecimiento;
 
     read(fd2_padre[0], &id_logico, sizeof(int));
+
+    id = id_logico;
 
     write(fd_padre[1], &respuesta, 1);
 
@@ -237,7 +236,6 @@ void conectar_hijos(int **pipes_padrehijo, int **anillo, int hijos, int token, i
     }
 
     // Enviar token inicial
-    fprintf(stderr, "Padre envía token: %d\n", token);
     int salida[2];
     salida[0] = 1;
     salida[1] = token;
