@@ -12,12 +12,30 @@ int main(int argc, char *argv[]) {
     while ((opt = getopt(argc, argv, "t:M:p:")) != -1) {
         switch (opt) {
             case 't':
+                for (int i = 0; optarg[i] != '\0'; i++) {
+                    if (optarg[i] < '0' || optarg[i] > '9') {
+                        fprintf(stderr, "Error: el argumento -t debe ser un número positivo.\n");
+                        exit(EXIT_FAILURE);
+                    }
+                }
                 token = atoi(optarg);
                 break;
             case 'M':
+                for (int i = 0; optarg[i] != '\0'; i++) {
+                    if (optarg[i] < '0' || optarg[i] > '9') {
+                        fprintf(stderr, "Error: el argumento -M debe ser un número positivo.\n");
+                        exit(EXIT_FAILURE);
+                    }
+                }
                 numero = atoi(optarg);
                 break;
             case 'p':
+                for (int i = 0; optarg[i] != '\0'; i++) {
+                    if (optarg[i] < '0' || optarg[i] > '9') {
+                        fprintf(stderr, "Error: el argumento -p debe ser un número positivo.\n");
+                        exit(EXIT_FAILURE);
+                    }
+                }
                 hijos = atoi(optarg);
                 break;
             default:
@@ -36,6 +54,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Validar tipo de argumentos
+    if (token )
     if (token < 0) {
         fprintf(stderr, "El token debe ser un número positivo.\n");
         exit(EXIT_FAILURE);
