@@ -364,8 +364,17 @@ void conectar_hijos(int **pipes_padrehijo, int **anillo, int hijos, int token, i
         salida_lider[0] = 4;
         salida_lider[1] = hijos;
         // selecciona el lider
-        write(anillo[0][1], salida_lider, sizeof(int)*2); 
-        // le envia el token al lider
-        write(anillo[0][1], &token, sizeof(int));
+        // mecanismo de eleccion de lider, selecciona el proceso anterior al que sale
+        if(id_logico_hijo == 0){
+            // sale el primero entonces el ultimo es el anterior
+            write(anillo[hijos-1][1], salida_lider, sizeof(int)*2); 
+            // le envia el token al lider
+            write(anillo[hijos-1][1], &token, sizeof(int));
+        }
+        else{
+            write(anillo[id_logico_hijo-1][1], salida_lider, sizeof(int)*2); 
+            // le envia el token al lider
+            write(anillo[id_logico_hijo-1][1], &token, sizeof(int));
+        }
     }
 }
